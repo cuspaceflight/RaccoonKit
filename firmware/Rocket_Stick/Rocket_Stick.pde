@@ -11,6 +11,11 @@
  
  This uses Bill Greiman's sdfatlib (very good!) as well as many other people's
  code (their names should be on the headers). 
+ 
+ ----
+ Modified for CU Spaceflight RaccoonKit by Jon Sowman 2011
+ http://www.cusf.co.uk
+ 
 */
 
 #include <SdFat.h>
@@ -32,16 +37,7 @@ SdFile file;
 #define Z0 0x36
 #define Z1 0x37
 
-// ITG3200 Constants
-#define GYRO_ADDR 0x68 // gyro address, binary = 11101001
-#define SMPLRT_DIV 0x02
-#define DLPF_FS 0x16
-#define INT_CFG 0x17
-#define PWR_MGM 0x3E
-
-int mx, my, mz;
 int ax, ay, az;
-int gx, gy, gz;
 
 int statLED = 5;
 
@@ -94,8 +90,6 @@ void setup(void) {
 
   Wire.begin(); // join i2c bus
 
-  initITG3200();
-  HMC.init();
   initADXL345();
 }
 
@@ -124,7 +118,7 @@ void loop(void) {
 
   char buffer[50];
 
-  writeString(file, "#,mx,my,mz,ax,ay,az,gx,gy,gz,ms,$");
+  writeString(file, "#,ax,ay,az,$");
   writeCRLF(file);
 
   while(1) //Begin recording data to file... forever
@@ -134,14 +128,12 @@ void loop(void) {
     else
       digitalWrite(statLED, HIGH);
 
-    //Print HMC5843 and accel values
-    HMC.getValues(&mx, &my, &mz);
-    getITG3200();
+    //Get accel values
     ax = getDir('x');
     ay = getDir('y');
     az = getDir('z');
 
-    sprintf(buffer, "#,%04d,%04d,%04d,%04d,%04d,%04d,%05d,%05d,%05d,", mx, my, mz, ax, ay, az, gx, gy, gz);
+    sprintf(buffer, "#,%04d,%04d,%04d,", ax, ay, az);
     writeString(file, buffer);
     writeNumber(file, millis());
     writeString(file, ",$");
@@ -195,118 +187,4 @@ int getDir(char dir){
     var=var+(requestByte(Z1)<<8);
   }
   return(var);
-}
-
-//initializes the gyroscope
-void initITG3200()
-{
-  /*****************************************
-   * 	*	ITG 3200
-   * 	*	power management set to:
-   * 	*	clock select = internal oscillator
-   * 	* 		no reset, no sleep mode
-   * 	*		no standby mode
-   * 	*	sample rate to = 500Hz
-   * 	*	parameter to +/- 2000 degrees/sec
-   * 	*	low pass filter = 5Hz
-   * 	*	no interrupt
-   	******************************************/
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(PWR_MGM);
-  Wire.send(0x00);
-  Wire.endTransmission();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(SMPLRT_DIV);
-  Wire.send(0xFF); // EB, 50, 80, 7F, DE, 23, 20, FF
-  Wire.endTransmission();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(DLPF_FS);
-  Wire.send(0x1E); // +/- 2000 dgrs/sec, 1KHz, 1E, 19
-  Wire.endTransmission();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(INT_CFG);
-  Wire.send(0x00);
-  Wire.endTransmission();
-}
-
-void getITG3200()
-{
-  char buffer[50];
-
-  /**************************************
-   * 		Gyro ITG-3200 I2C
-   * 		registers:
-   * 		x axis MSB = 1D, x axis LSB = 1E
-   * 		y axis MSB = 1F, y axis LSB = 20
-   * 		z axis MSB = 21, z axis LSB = 22
-   	**************************************/
-  // Arduino Wire library (I2C)
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x1D); // MSB x axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-  byte msb = 0;
-  byte lsb = 0;
-  while(!Wire.available());
-  msb = Wire.receive();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x1E); // LSB x axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-
-  while(!Wire.available());
-  lsb = Wire.receive();
-
-  // calculate total x axis
-  gx = (( msb << 8) | lsb);
-
-  // clear variables
-  msb = 0;
-  lsb = 0;
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x1F); // MSB y axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-
-  while(!Wire.available());
-  msb = Wire.receive();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x20); // LSB y axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-
-  while(!Wire.available());
-  lsb = Wire.receive();
-
-  // calculate total y axis
-  gy = (( msb << 8) | lsb);
-
-  // clear variables
-  msb = 0;
-  lsb = 0;
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x21); // MSB z axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-
-  while(!Wire.available());
-  msb = Wire.receive();
-
-  Wire.beginTransmission(GYRO_ADDR);
-  Wire.send(0x22); // LSB z axis
-  Wire.endTransmission();
-  Wire.requestFrom(GYRO_ADDR, 1); // one byte
-
-  while(!Wire.available());
-  lsb = Wire.receive();
-
-  // calculate z axis
-  gz = (( msb << 8) | lsb);
 }
